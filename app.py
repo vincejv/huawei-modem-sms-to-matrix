@@ -9,7 +9,7 @@ import os
 # Replace with your modem's admin username and password
 USERNAME = os.environ.get('MODEM_USERNAME', 'pldthome')
 PASSWORD = os.environ.get('MODEM_PASSWORD', 'pldthome')
-MODEM_HOST = os.environ.get('MODEM_HOST', 'pldthome')
+MODEM_HOST = os.environ.get('MODEM_HOST', '192.168.1.1') # only ip addresses are allowed for now
 MODEM_POLL_SEC = int(os.environ.get('POLL_SEC', '10'))
 
 # PostgreSQL credentials
