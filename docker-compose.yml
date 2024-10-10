@@ -1,0 +1,23 @@
+x-service-template: &service-template
+  extra_hosts:
+      - "host.docker.internal:host-gateway"
+  restart: unless-stopped
+  logging:
+    options:
+      max-size: "20m"
+      max-file: "5"
+      compress: "true"
+
+services:
+  modem-to-matrix:
+    image: vincejv/huawei-modem-sms-to-matrix
+    container_name: modem-to-matrix
+    environment:
+      DB_HOST: postgres.docker.internal
+      DB_NAME: sms-modem-api
+      DB_USER: sms-modem-api
+      DB_PASS: sms-modem-api
+      ROOM_ID: "!aabbccdd:matrix.com"
+      ACCESS_TOKEN: "syt_aabbcc1122334455"
+      MATRIX_HOST: matrix.com
+    <<: *service-template
