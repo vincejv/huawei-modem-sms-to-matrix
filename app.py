@@ -1,3 +1,4 @@
+import logging
 import huaweisms.api.user
 import huaweisms.api.sms
 import psycopg2
@@ -5,6 +6,9 @@ import requests
 from datetime import datetime
 import time
 import os
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Replace with your modem's admin username and password
 USERNAME = os.environ.get('MODEM_USERNAME', 'pldthome')
@@ -46,7 +50,7 @@ def update_last_message(new_last_date, new_last_index):
 
 # Send message to Matrix Synapse API
 def send_to_matrix(phone, date, content):
-    print(f"Sending to matrix: {phone} | {content}")
+    logging.info(f"Sending to matrix: {phone} | {content}")
     message_body = {
         "msgtype": "m.text",
         "body": f"From: {phone}\nDate: {date}\n---\n{content}"
@@ -54,12 +58,12 @@ def send_to_matrix(phone, date, content):
     api_url = MATRIX_API_URL.format(roomId=ROOM_ID, token=ACCESS_TOKEN)
     response = requests.post(api_url, json=message_body)
     if response.status_code != 200:
-        print(f"Failed to send message to Matrix Synapse: {response.content}")
+        logging.error(f"Failed to send message to Matrix Synapse: {response.content}")
 
 # Poll for new messages in an infinite loop
 def poll_messages():
     while True:
-        # print("Polling...")
+        logging.debug("Polling...")
         # Log in to the modem
         ctx = huaweisms.api.user.quick_login(USERNAME, PASSWORD, modem_host=MODEM_HOST)
 
@@ -122,5 +126,5 @@ def poll_messages():
         time.sleep(MODEM_POLL_SEC)
 
 if __name__ == "__main__":
-    print("Starting SMS Polling application...")
+    logging.info("Starting the SMS poller")
     poll_messages()
