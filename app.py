@@ -68,7 +68,7 @@ def poll_messages():
         with Connection(f'http://{MODEM_HOST}/', username=USERNAME, password=PASSWORD) as connection:
             client = Client(connection)
             while True:
-                logging.info(f"Polling modem every {MODEM_POLL_SEC}s")
+                logging.debug(f"Polling modem every {MODEM_POLL_SEC}s")
 
                 # Get the last message date and index from the database
                 last_date, last_index = get_last_message(1)
@@ -166,7 +166,7 @@ def poll_messages():
                     latest_call_log_time = max(call['log_time'] for call in new_call_logs)  # Update with the latest timestamp
                     update_last_message(latest_call_log_time, -1, 2)
                 
-                logging.info("Finished polling for now, waiting for the next cycle.")
+                logging.debug("Finished polling for now, waiting for the next cycle.")
                 time.sleep(MODEM_POLL_SEC)
 
 if __name__ == "__main__":
