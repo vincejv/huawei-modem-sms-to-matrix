@@ -21,7 +21,8 @@ DB_PASS = os.environ['DB_PASS']
 # Matrix Synapse API details
 ROOM_ID = os.environ['ROOM_ID']
 ACCESS_TOKEN = os.environ['ACCESS_TOKEN']
-MATRIX_API_URL = f"https://matrix.vincejv.com/_matrix/client/r0/rooms/{ROOM_ID}/send/m.room.message?access_token={ACCESS_TOKEN}"
+MATRIX_HOST = os.environ['MATRIX_HOST']
+MATRIX_API_URL = f"https://{MATRIX_HOST}/_matrix/client/r0/rooms/{ROOM_ID}/send/m.room.message?access_token={ACCESS_TOKEN}"
 
 # Connect to PostgreSQL database
 def get_last_message():
