@@ -90,10 +90,11 @@ def poll_messages():
 
                 # Loop until all pages are fetched
                 while True:
+                    sms_data = {}
                     if int(client.sms.sms_count().get('LocalInbox', '0')) > 0:
                         sms_data = client.sms.get_sms_list(page=page, ascending=True)  # 1 = inbox
                     else:
-                        sms_data['Count'] == 0
+                        sms_data['Count'] = 0
 
                     if 'Messages' not in sms_data or sms_data['Count'] == '0':
                         break  # Stop when there are no more messages
