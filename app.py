@@ -29,6 +29,10 @@ ACCESS_TOKEN = os.environ['ACCESS_TOKEN']
 MATRIX_HOST = os.environ['MATRIX_HOST']
 MATRIX_API_URL = f"https://{MATRIX_HOST}/_matrix/client/r0/rooms/{ROOM_ID}/send/m.room.message?access_token={ACCESS_TOKEN}"
 
+# Truncation
+MAX_LENGTH = 73
+ELLIPSIS = "..."
+
 # Connect to PostgreSQL database
 def get_last_message(id=1):
     conn = psycopg2.connect(host=DB_HOST, dbname=DB_NAME, user=DB_USER, password=DB_PASS)
@@ -51,7 +55,8 @@ def update_last_message(new_last_date, new_last_index, id=1):
 
 # Send message to Matrix Synapse API
 def send_to_matrix(phone, date, content):
-    logging.info(f"Sending to matrix: {phone} | {content}")
+    truncated_content = truncate_and_replace(content)
+    logging.info(f"Sending to matrix: {phone} | {truncated_content}")
     message_body = {
         "msgtype": "m.text",
         "body": f"From: {phone}\nDate: {date}\n---\n{content}"
@@ -60,6 +65,13 @@ def send_to_matrix(phone, date, content):
     response = requests.post(api_url, json=message_body)
     if response.status_code != 200:
         logging.error(f"Failed to send message to Matrix Synapse: {response.content}")
+
+def truncate_and_replace(text):
+    # Replace newlines with spaces
+    text = text.replace('\n', ' ')
+    
+    # Truncate to (MAX_LENGTH - len(ELLIPSIS)) and add ellipsis if needed
+    return (text[:MAX_LENGTH - len(ELLIPSIS)] + ELLIPSIS) if len(text) > MAX_LENGTH else text
 
 # Poll for new messages in an infinite loop
 def poll_messages():
