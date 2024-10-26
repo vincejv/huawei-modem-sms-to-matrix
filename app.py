@@ -1,4 +1,5 @@
 import logging
+from huawei_lte_api.exceptions import ResponseErrorLoginRequiredException
 from huawei_lte_api.Connection import Connection
 from huawei_lte_api.Client import Client
 from huawei_lte_api.enums.client import ResponseEnum
@@ -75,111 +76,124 @@ def truncate_and_replace(text):
 
 # Poll for new messages in an infinite loop
 def poll_messages():
-    # Log in to the modem
-    with Connection(f'http://{MODEM_HOST}/', username=USERNAME, password=PASSWORD) as connection:
-        client = Client(connection)
-        while True:
-            logging.debug(f"Polling modem every {MODEM_POLL_SEC}s")
+    # Retry login if login session timed out
+    MAX_LOGIN_ATTEMPTS = 7
+    login_attempts = MAX_LOGIN_ATTEMPTS
+    while True:
+        login_attempts = login_attempts - 1
+        # Log in to the modem
+        try:
+            with Connection(f'http://{MODEM_HOST}/', username=USERNAME, password=PASSWORD) as connection:
+                client = Client(connection)
+                while True:
+                    logging.debug(f"Polling modem every {MODEM_POLL_SEC}s")
 
-            # Get the last message date and index from the database
-            last_date, last_index = get_last_message(1)
+                    # Get the last message date and index from the database
+                    last_date, last_index = get_last_message(1)
 
-            new_messages = []
-            page = 1  # Start with the first page
+                    new_messages = []
+                    page = 1  # Start with the first page
 
-            # Loop until all pages are fetched
-            while True:
-                sms_data = {}
-                sms_data = client.sms.get_sms_list(page=page, ascending=True)  # 1 = inbox
+                    # Loop until all pages are fetched
+                    while True:
+                        sms_data = {}
+                        sms_data = client.sms.get_sms_list(page=page, ascending=True)  # 1 = inbox
 
-                if 'Messages' not in sms_data or sms_data['Count'] == '0':
-                    break  # Stop when there are no more messages
+                        if 'Messages' not in sms_data or sms_data['Count'] == '0':
+                            break  # Stop when there are no more messages
 
-                # Extract messages
-                messages = sms_data['Messages']['Message'] if isinstance(sms_data['Messages']['Message'], list) else [sms_data['Messages']['Message']]
+                        # Extract messages
+                        messages = sms_data['Messages']['Message'] if isinstance(sms_data['Messages']['Message'], list) else [sms_data['Messages']['Message']]
 
-                for message in messages:
-                    message_date = datetime.strptime(message['Date'], "%Y-%m-%d %H:%M:%S")
-                    message_index = int(message['Index'])
+                        for message in messages:
+                            message_date = datetime.strptime(message['Date'], "%Y-%m-%d %H:%M:%S")
+                            message_index = int(message['Index'])
 
-                    # Compare both date and index for uniqueness
-                    if (message_date > last_date) or (message_date == last_date and message_index > last_index):
-                        new_messages.append(message)
-                        client.sms.delete_sms(message_index)
+                            # Compare both date and index for uniqueness
+                            if (message_date > last_date) or (message_date == last_date and message_index > last_index):
+                                new_messages.append(message)
+                                client.sms.delete_sms(message_index)
 
-                # Stop fetching if Count is 0 or less messages
-                if sms_data['Count'] == '0' or len(messages) < 20:  # Assuming each page fetches 20 messages
-                    break
+                        # Stop fetching if Count is 0 or less messages
+                        if sms_data['Count'] == '0' or len(messages) < 20:  # Assuming each page fetches 20 messages
+                            break
 
-                page += 1  # Go to the next page if there are more messages
+                        page += 1  # Go to the next page if there are more messages
 
-            # Process and send new messages
-            if new_messages:
-                for message in new_messages:
-                    phone = message.get('Phone', 'Unknown')
-                    date = message.get('Date', 'Unknown')
-                    content = message.get('Content', 'No content')
+                    # Process and send new messages
+                    if new_messages:
+                        for message in new_messages:
+                            phone = message.get('Phone', 'Unknown')
+                            date = message.get('Date', 'Unknown')
+                            content = message.get('Content', 'No content')
 
-                    # Send to Matrix Synapse API
-                    send_to_matrix(phone, date, content)
+                            # Send to Matrix Synapse API
+                            send_to_matrix(phone, date, content)
 
-                # Update last date and index with the latest message
-                last_message = max(new_messages, key=lambda m: (datetime.strptime(m['Date'], "%Y-%m-%d %H:%M:%S"), int(m['Index'])))
-                last_message_date = datetime.strptime(last_message['Date'], "%Y-%m-%d %H:%M:%S")
-                last_message_index = int(last_message['Index'])
+                        # Update last date and index with the latest message
+                        last_message = max(new_messages, key=lambda m: (datetime.strptime(m['Date'], "%Y-%m-%d %H:%M:%S"), int(m['Index'])))
+                        last_message_date = datetime.strptime(last_message['Date'], "%Y-%m-%d %H:%M:%S")
+                        last_message_index = int(last_message['Index'])
 
-                update_last_message(last_message_date, last_message_index)
+                        update_last_message(last_message_date, last_message_index)
 
-            # Poll and process call logs
-            last_call_date, _ = get_last_message(2)
-            log_lines = [line for line in client.log.loginfo().get('LogContent').split('\\r\\n') if "call:" in line][:15]  # Get the last 15 log lines
-            new_call_logs = []
+                    # Poll and process call logs
+                    last_call_date, _ = get_last_message(2)
+                    log_lines = [line for line in client.log.loginfo().get('LogContent').split('\\r\\n') if "call:" in line][:15]  # Get the last 15 log lines
+                    new_call_logs = []
 
-            for log in log_lines:
-                parts = log.split('User Notice ')
-                if len(parts) > 1:
-                    log_info = parts[1].strip()
-                    call_type = log_info.split(':')[0]  # Get the call type (Missed call or Outgoing call)
+                    for log in log_lines:
+                        parts = log.split('User Notice ')
+                        if len(parts) > 1:
+                            log_info = parts[1].strip()
+                            call_type = log_info.split(':')[0]  # Get the call type (Missed call or Outgoing call)
 
-                    # Extract relevant information
-                    details = log_info.split(', ')
-                    call_info = {}
-                    for detail in details:
-                        key, value = detail.split(':', 1)
-                        call_info[key.strip()] = value.strip()
+                            # Extract relevant information
+                            details = log_info.split(', ')
+                            call_info = {}
+                            for detail in details:
+                                key, value = detail.split(':', 1)
+                                call_info[key.strip()] = value.strip()
 
-                    # Get call details
-                    caller = call_info.get('Caller', 'Unknown')
-                    callee = call_info.get('Callee', 'Unknown')
-                    duration = call_info.get('Duration', '00:00:00')
-                    log_time = datetime.strptime(log[:19], "%Y-%m-%d %H:%M:%S")  # Extract the timestamp from the log
+                            # Get call details
+                            caller = call_info.get('Caller', 'Unknown')
+                            callee = call_info.get('Callee', 'Unknown')
+                            duration = call_info.get('Duration', '00:00:00')
+                            log_time = datetime.strptime(log[:19], "%Y-%m-%d %H:%M:%S")  # Extract the timestamp from the log
 
-                    # Check if the call log is new before inserting
-                    if log_time > last_call_date:
-                        new_call_logs.append({
-                            'log_time': log_time,
-                            'call_type': call_type,
-                            'callee': callee,
-                            'caller': caller,
-                            'duration': duration
-                        })
+                            # Check if the call log is new before inserting
+                            if log_time > last_call_date:
+                                new_call_logs.append({
+                                    'log_time': log_time,
+                                    'call_type': call_type,
+                                    'callee': callee,
+                                    'caller': caller,
+                                    'duration': duration
+                                })
 
-            # Update last call log time with the most recent timestamp
-            if new_call_logs:
-                for call in new_call_logs:
-                    # Send the call log to Matrix
-                    trigger_from = call['call_type']  # Assuming caller as the phone number
-                    call_date = call['log_time'].strftime("%Y-%m-%d %H:%M:%S")
-                    matrix_content = f"Caller: {call['caller']}\nCallee: {call['callee']}\nDuration: {call['duration']}"
+                    # Update last call log time with the most recent timestamp
+                    if new_call_logs:
+                        for call in new_call_logs:
+                            # Send the call log to Matrix
+                            trigger_from = call['call_type']  # Assuming caller as the phone number
+                            call_date = call['log_time'].strftime("%Y-%m-%d %H:%M:%S")
+                            matrix_content = f"Caller: {call['caller']}\nCallee: {call['callee']}\nDuration: {call['duration']}"
 
-                    # Send to Matrix Synapse API
-                    send_to_matrix(trigger_from, call_date, matrix_content)
-                
-                latest_call_log_time = max(call['log_time'] for call in new_call_logs)  # Update with the latest timestamp
-                update_last_message(latest_call_log_time, -1, 2)
+                            # Send to Matrix Synapse API
+                            send_to_matrix(trigger_from, call_date, matrix_content)
+                        
+                        latest_call_log_time = max(call['log_time'] for call in new_call_logs)  # Update with the latest timestamp
+                        update_last_message(latest_call_log_time, -1, 2)
+                    
+                    logging.debug("Finished polling for now, waiting for the next cycle.")
+                    login_attempts = MAX_LOGIN_ATTEMPTS
+                    time.sleep(MODEM_POLL_SEC)
+        except ResponseErrorLoginRequiredException as e:
+            if (login_attempts > 0):
+                logging.debug("Session expired, retry to login")
+            else:
+                logging.error("Max login attempts exhausted, quitting the program")
             
-            logging.debug("Finished polling for now, waiting for the next cycle.")
-            time.sleep(MODEM_POLL_SEC)
 
 if __name__ == "__main__":
     logging.info("Starting the SMS and Call poller")
